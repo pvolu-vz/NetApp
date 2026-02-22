@@ -20,6 +20,8 @@ SCRIPT_LOG_DIR=""
 VENV_DIR=""
 ENV_FILE=""
 INSTALL_LOG=""
+RUN_AS_ROOT=""
+PKG_MANAGER=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -123,16 +125,32 @@ configure_paths() {
 
 require_linux() {
     if [[ "$(uname -s)" != "Linux" ]]; then
-        err "This installer supports Linux only (RHEL/Rocky/Alma recommended)."
+        err "This installer supports Linux only."
         exit 1
     fi
 }
 
-require_dnf() {
-    if ! command -v dnf >/dev/null 2>&1; then
-        err "dnf not found. This installer currently supports RHEL-like distributions with dnf."
+detect_package_manager() {
+    if command -v dnf >/dev/null 2>&1; then
+        PKG_MANAGER="dnf"
+    elif command -v yum >/dev/null 2>&1; then
+        PKG_MANAGER="yum"
+    elif command -v apt-get >/dev/null 2>&1; then
+        PKG_MANAGER="apt"
+    elif command -v zypper >/dev/null 2>&1; then
+        PKG_MANAGER="zypper"
+    elif command -v apk >/dev/null 2>&1; then
+        PKG_MANAGER="apk"
+    else
+        PKG_MANAGER="none"
+    fi
+
+    if [[ "${PKG_MANAGER}" == "none" ]]; then
+        err "No supported package manager found (dnf/yum/apt/zypper/apk)."
         exit 1
     fi
+
+    ok "Detected package manager: ${PKG_MANAGER}"
 }
 
 ensure_root_command() {
@@ -147,23 +165,73 @@ ensure_root_command() {
     fi
 }
 
+run_root() {
+    if [[ -n "${RUN_AS_ROOT}" ]]; then
+        ${RUN_AS_ROOT} "$@"
+    else
+        "$@"
+    fi
+}
+
 setup_directories() {
-    ${RUN_AS_ROOT} mkdir -p "${APP_DIR}" "${LOG_DIR}" "${CONFIG_DIR}" "${SCRIPT_LOG_DIR}"
-    ${RUN_AS_ROOT} chmod 755 "${INSTALL_BASE}" "${APP_DIR}" "${LOG_DIR}" "${CONFIG_DIR}" "${SCRIPT_LOG_DIR}"
-    ${RUN_AS_ROOT} touch "${INSTALL_LOG}"
+    run_root mkdir -p "${APP_DIR}" "${LOG_DIR}" "${CONFIG_DIR}" "${SCRIPT_LOG_DIR}"
+    run_root chmod 755 "${INSTALL_BASE}" "${APP_DIR}" "${LOG_DIR}" "${CONFIG_DIR}" "${SCRIPT_LOG_DIR}"
+    run_root touch "${INSTALL_LOG}"
     if [[ "${EUID}" -ne 0 ]]; then
-        ${RUN_AS_ROOT} chown -R "${USER}":"${USER}" "${INSTALL_BASE}"
-        ${RUN_AS_ROOT} chown "${USER}":"${USER}" "${INSTALL_LOG}"
+        run_root chown -R "${USER}":"${USER}" "${INSTALL_BASE}"
+        run_root chown "${USER}":"${USER}" "${INSTALL_LOG}"
     fi
 }
 
 install_system_packages() {
-    log "Installing required system packages with dnf (git, curl, python3, python3-pip)..."
-    ${RUN_AS_ROOT} dnf install -y git curl python3 python3-pip >/dev/null
+    local needs_install="false"
+    if ! command -v git >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+        needs_install="true"
+    fi
+
+    if [[ "${needs_install}" == "false" ]]; then
+        ok "Base system tools already present (git/curl/python3)"
+    else
+        log "Installing required system packages (git, curl, python3, pip) using ${PKG_MANAGER}..."
+        case "${PKG_MANAGER}" in
+            dnf)
+                run_root dnf install -y git curl python3 python3-pip >/dev/null
+                ;;
+            yum)
+                run_root yum install -y git curl python3 python3-pip >/dev/null
+                ;;
+            apt)
+                run_root apt-get update -y >/dev/null
+                run_root apt-get install -y git curl python3 python3-pip >/dev/null
+                ;;
+            zypper)
+                run_root zypper --non-interactive install git curl python3 python3-pip >/dev/null
+                ;;
+            apk)
+                run_root apk add --no-cache git curl python3 py3-pip >/dev/null
+                ;;
+        esac
+    fi
 
     if ! python3 -m venv --help >/dev/null 2>&1; then
-        warn "python3 venv module not available; installing python3-virtualenv..."
-        ${RUN_AS_ROOT} dnf install -y python3-virtualenv >/dev/null
+        warn "python3 venv module not available; installing venv support..."
+        case "${PKG_MANAGER}" in
+            dnf)
+                run_root dnf install -y python3-virtualenv >/dev/null
+                ;;
+            yum)
+                run_root yum install -y python3-virtualenv >/dev/null
+                ;;
+            apt)
+                run_root apt-get install -y python3-venv >/dev/null
+                ;;
+            zypper)
+                run_root zypper --non-interactive install python3-virtualenv >/dev/null
+                ;;
+            apk)
+                run_root apk add --no-cache py3-virtualenv >/dev/null
+                ;;
+        esac
     fi
 
     ok "System packages verified"
@@ -179,10 +247,10 @@ sync_repository() {
     else
         if [[ -n "$(ls -A "${APP_DIR}" 2>/dev/null)" ]]; then
             warn "${APP_DIR} is not empty. Existing files may be overwritten by git clone."
-            ${RUN_AS_ROOT} rm -rf "${APP_DIR}"
-            ${RUN_AS_ROOT} mkdir -p "${APP_DIR}"
+            run_root rm -rf "${APP_DIR}"
+            run_root mkdir -p "${APP_DIR}"
             if [[ "${EUID}" -ne 0 ]]; then
-                ${RUN_AS_ROOT} chown "${USER}":"${USER}" "${APP_DIR}"
+                run_root chown "${USER}":"${USER}" "${APP_DIR}"
             fi
         fi
 
@@ -430,7 +498,7 @@ EOF
 main() {
     parse_args "$@"
     require_linux
-    require_dnf
+        detect_package_manager
     ensure_root_command
     configure_paths
     setup_directories

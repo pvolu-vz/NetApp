@@ -56,7 +56,7 @@ The script performs the following operations:
 
 ## Installation
 
-### One-Command Installer (RHEL / Rocky / AlmaLinux)
+### One-Command Installer (Linux)
 
 For ONTAP-only deployments, use the installer script directly from GitHub:
 
@@ -67,7 +67,7 @@ curl -fsSL https://raw.githubusercontent.com/pvolu-vz/NetApp/main/install_ontap.
 What it does automatically:
 
 - Runs Linux/RHEL pre-checks similar to `preflight.sh` (system packages, Python, dependencies, connectivity)
-- Installs required packages (`git`, `curl`, `python3`, `python3-pip`) using `dnf`
+- Detects package manager and installs required packages (`git`, `curl`, `python3`, `python3-pip`) using `dnf`, `yum`, `apt`, `zypper`, or `apk`
 - Clones/updates this repository into `/opt/netapp-veza/scripts`
 - Creates folder structure: `/opt/netapp-veza/scripts`, `/opt/netapp-veza/logs`, `/opt/netapp-veza/configs`, and `/opt/netapp-veza/scripts/logs`
 - Creates Python virtual environment and installs `requirements.txt`
