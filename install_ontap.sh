@@ -22,6 +22,8 @@ ENV_FILE=""
 INSTALL_LOG=""
 RUN_AS_ROOT=""
 PKG_MANAGER=""
+OS_ID=""
+APT_UPDATED="false"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -151,6 +153,13 @@ detect_package_manager() {
     fi
 
     ok "Detected package manager: ${PKG_MANAGER}"
+
+    if [[ -f /etc/os-release ]]; then
+        OS_ID="$(grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')"
+    else
+        OS_ID="unknown"
+    fi
+    ok "Detected distro: ${OS_ID}"
 }
 
 ensure_root_command() {
@@ -184,31 +193,63 @@ setup_directories() {
 }
 
 install_system_packages() {
-    local needs_install="false"
-    if ! command -v git >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
-        needs_install="true"
-    fi
-
-    if [[ "${needs_install}" == "false" ]]; then
-        ok "Base system tools already present (git/curl/python3)"
-    else
-        log "Installing required system packages (git, curl, python3, pip) using ${PKG_MANAGER}..."
+    install_pkg() {
+        local pkg="$1"
         case "${PKG_MANAGER}" in
             dnf)
-                run_root dnf install -y git curl python3 python3-pip >/dev/null
+                run_root dnf install -y "${pkg}" >/dev/null
                 ;;
             yum)
-                run_root yum install -y git curl python3 python3-pip >/dev/null
+                run_root yum install -y "${pkg}" >/dev/null
                 ;;
             apt)
-                run_root apt-get update -y >/dev/null
-                run_root apt-get install -y git curl python3 python3-pip >/dev/null
+                if [[ "${APT_UPDATED}" != "true" ]]; then
+                    run_root apt-get update -y >/dev/null
+                    APT_UPDATED="true"
+                fi
+                run_root apt-get install -y "${pkg}" >/dev/null
                 ;;
             zypper)
-                run_root zypper --non-interactive install git curl python3 python3-pip >/dev/null
+                run_root zypper --non-interactive install "${pkg}" >/dev/null
                 ;;
             apk)
-                run_root apk add --no-cache git curl python3 py3-pip >/dev/null
+                run_root apk add --no-cache "${pkg}" >/dev/null
+                ;;
+        esac
+    }
+
+    if ! command -v git >/dev/null 2>&1; then
+        log "Installing git..."
+        install_pkg "git"
+    fi
+
+    if ! command -v curl >/dev/null 2>&1; then
+        if command -v wget >/dev/null 2>&1; then
+            warn "curl not found, but wget is available. Continuing without installing curl."
+        elif [[ "${OS_ID}" == "amzn" ]]; then
+            warn "curl not found on Amazon Linux; skipping curl install to avoid curl-minimal conflicts."
+            warn "Install curl-minimal manually if needed: sudo dnf install -y curl-minimal"
+        else
+            log "Installing curl..."
+            install_pkg "curl"
+        fi
+    else
+        ok "curl already present; skipping curl package install"
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        log "Installing python3..."
+        install_pkg "python3"
+    fi
+
+    if ! python3 -m pip --version >/dev/null 2>&1; then
+        log "Installing python3 pip..."
+        case "${PKG_MANAGER}" in
+            apk)
+                install_pkg "py3-pip"
+                ;;
+            *)
+                install_pkg "python3-pip"
                 ;;
         esac
     fi
@@ -280,19 +321,22 @@ prompt_value() {
     local secret="$4"
     local value=""
 
+    # All prompts and warnings must go to /dev/tty so they are visible when
+    # the script is piped via "curl | bash" (stdin is the pipe, not the terminal)
+    # and so that warn/echo output is NOT captured by the $(...) substitution.
     while true; do
         if [[ "${secret}" == "true" ]]; then
             if [[ -n "${default_value}" ]]; then
-                read -r -s -p "${prompt_text} [current kept if empty]: " value
+                IFS= read -r -s -p "${prompt_text} [current kept if empty]: " value </dev/tty
             else
-                read -r -s -p "${prompt_text}: " value
+                IFS= read -r -s -p "${prompt_text}: " value </dev/tty
             fi
-            echo
+            echo >/dev/tty  # newline after silent input - goes to tty, not captured
         else
             if [[ -n "${default_value}" ]]; then
-                read -r -p "${prompt_text} [${default_value}]: " value
+                IFS= read -r -p "${prompt_text} [${default_value}]: " value </dev/tty
             else
-                read -r -p "${prompt_text}: " value
+                IFS= read -r -p "${prompt_text}: " value </dev/tty
             fi
         fi
 
@@ -301,11 +345,11 @@ prompt_value() {
         fi
 
         if [[ "${required}" == "true" && -z "${value}" ]]; then
-            warn "This value is required."
+            echo -e "${YELLOW}[WARN]${NC} This value is required." >/dev/tty
             continue
         fi
 
-        echo "${value}"
+        echo "${value}"  # only this goes to stdout -> captured by $(...)
         return 0
     done
 }
@@ -487,18 +531,18 @@ Paths:
   Logs:      ${LOG_DIR}
   Log file:  ${INSTALL_LOG}
 
-Run command example:
+Run the integration:
   ${VENV_DIR}/bin/python ${APP_DIR}/netAppShares.py --system-type ontap --svm-name YOUR_SVM --protocol cifs --env-file ${ENV_FILE}
 
-Optional validation:
-    ${VENV_DIR}/bin/python ${APP_DIR}/netAppShares.py --system-type ontap --svm-name YOUR_SVM --protocol cifs --env-file ${ENV_FILE}
+Validate prerequisites:
+  cd ${APP_DIR} && bash preflight.sh
 EOF
 }
 
 main() {
     parse_args "$@"
     require_linux
-        detect_package_manager
+    detect_package_manager
     ensure_root_command
     configure_paths
     setup_directories
