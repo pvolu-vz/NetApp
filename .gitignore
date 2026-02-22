@@ -1,0 +1,25 @@
+# Archive folder
+archive/
+
+# Environment files (contain credentials)
+.env
+.env.*
+!.env.example-ontap
+!.env.example-bluexp
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+logs/
+
+# macOS
+.DS_Store

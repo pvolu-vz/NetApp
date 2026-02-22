@@ -299,6 +299,12 @@ sync_repository() {
         git clone --branch "${BRANCH}" --single-branch "${REPO_URL}" "${APP_DIR}" >> "${INSTALL_LOG}" 2>&1
     fi
 
+    # Ensure all scripts are executable after clone/update
+    chmod +x "${APP_DIR}/netAppShares.py" 2>/dev/null || true
+    chmod +x "${APP_DIR}/preflight.sh"    2>/dev/null || true
+    chmod +x "${APP_DIR}/run_multi_ontap_sync.sh" 2>/dev/null || true
+    ok "File permissions set"
+
     ok "Repository synchronized"
 }
 
@@ -307,11 +313,45 @@ setup_python_environment() {
     if [[ ! -d "${VENV_DIR}" ]]; then
         python3 -m venv "${VENV_DIR}"
     fi
+    ok "Virtual environment ready: ${VENV_DIR}"
 
-    "${VENV_DIR}/bin/python" -m pip install --upgrade pip >> "${INSTALL_LOG}" 2>&1
-    "${VENV_DIR}/bin/pip" install -r "${APP_DIR}/requirements.txt" >> "${INSTALL_LOG}" 2>&1
+    log "Upgrading pip inside virtual environment..."
+    "${VENV_DIR}/bin/python" -m pip install --upgrade pip 2>&1 | tee -a "${INSTALL_LOG}" | tail -1
 
-    ok "Python dependencies installed"
+    log "Installing Python dependencies from requirements.txt..."
+    if ! "${VENV_DIR}/bin/pip" install -r "${APP_DIR}/requirements.txt" 2>&1 | tee -a "${INSTALL_LOG}"; then
+        err "pip install failed. Check ${INSTALL_LOG} for details."
+        exit 1
+    fi
+
+    # Verify each package can be imported; uses "distname:importname" pairs
+    # because python-dotenv installs as "dotenv" module but the dist is "python-dotenv"
+    log "Verifying installed packages..."
+    local failed=0
+    local pkg_map=(
+        "requests:requests"
+        "python-dotenv:dotenv"
+        "oaaclient:oaaclient"
+    )
+    for entry in "${pkg_map[@]}"; do
+        local dist_name="${entry%%:*}"
+        local import_name="${entry##*:}"
+        if "${VENV_DIR}/bin/python" -c "import ${import_name}" 2>/dev/null; then
+            local ver
+            ver=$("${VENV_DIR}/bin/pip" show "${dist_name}" 2>/dev/null | grep '^Version:' | awk '{print $2}')
+            ok "${dist_name} ${ver:-installed} verified in venv"
+        else
+            err "${dist_name} (import: ${import_name}) failed to import after install"
+            failed=$((failed + 1))
+        fi
+    done
+
+    if [[ ${failed} -gt 0 ]]; then
+        err "${failed} package(s) failed to import. Run: ${VENV_DIR}/bin/pip install -r ${APP_DIR}/requirements.txt"
+        exit 1
+    fi
+
+    ok "All Python dependencies installed and verified"
 }
 
 prompt_value() {
@@ -469,16 +509,20 @@ check_required_files() {
 }
 
 check_python_imports() {
-    if ! "${VENV_DIR}/bin/python" - <<'PY' >/dev/null 2>&1
-import requests
-import dotenv
-import oaaclient
-PY
-    then
-        err "Dependency import check failed in virtual environment."
+    local failed=0
+    for pkg in requests dotenv oaaclient; do
+        if "${VENV_DIR}/bin/python" -c "import ${pkg}" 2>/dev/null; then
+            ok "${pkg} importable in venv"
+        else
+            err "${pkg} NOT importable in venv"
+            failed=$((failed + 1))
+        fi
+    done
+    if [[ ${failed} -gt 0 ]]; then
+        err "Run manually to fix: ${VENV_DIR}/bin/pip install -r ${APP_DIR}/requirements.txt"
         exit 1
     fi
-    ok "Dependency imports validated"
+    ok "All dependency imports validated"
 }
 
 test_connectivity() {
