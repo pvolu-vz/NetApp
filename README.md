@@ -56,6 +56,51 @@ The script performs the following operations:
 
 ## Installation
 
+### One-Command Installer (RHEL / Rocky / AlmaLinux)
+
+For ONTAP-only deployments, use the installer script directly from GitHub:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pvolu-vz/NetApp/main/install_ontap.sh | bash
+```
+
+What it does automatically:
+
+- Runs Linux/RHEL pre-checks similar to `preflight.sh` (system packages, Python, dependencies, connectivity)
+- Installs required packages (`git`, `curl`, `python3`, `python3-pip`) using `dnf`
+- Clones/updates this repository into `/opt/netapp-veza/scripts`
+- Creates folder structure: `/opt/netapp-veza/scripts`, `/opt/netapp-veza/logs`, `/opt/netapp-veza/configs`, and `/opt/netapp-veza/scripts/logs`
+- Creates Python virtual environment and installs `requirements.txt`
+- Prompts for **ONTAP + Veza only** values and generates `/opt/netapp-veza/scripts/.env`
+
+Optional flags:
+
+```bash
+# Override repository URL/branch/install directory
+curl -fsSL https://raw.githubusercontent.com/pvolu-vz/NetApp/main/install_ontap.sh | bash -s -- \
+   --repo-url https://github.com/pvolu-vz/NetApp.git \
+   --branch main \
+   --install-dir /opt/netapp-veza
+
+# Non-interactive mode (CI / automation)
+ONTAP_API_BASE_URL=https://ontap.example.com \
+ONTAP_USERNAME=svc_netapp \
+ONTAP_PASSWORD='secret' \
+VEZA_URL=your-company.veza.com \
+VEZA_API_KEY='secret' \
+curl -fsSL https://raw.githubusercontent.com/pvolu-vz/NetApp/main/install_ontap.sh | bash -s -- --non-interactive --overwrite-env
+```
+
+After installation:
+
+```bash
+/opt/netapp-veza/scripts/venv/bin/python /opt/netapp-veza/scripts/netAppShares.py \
+   --system-type ontap \
+   --svm-name YOUR_SVM \
+   --protocol cifs \
+   --env-file /opt/netapp-veza/scripts/.env
+```
+
 ### Step 1: Install Python 3
 
 #### On Red Hat Enterprise Linux 8+
