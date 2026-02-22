@@ -1,0 +1,293 @@
+{
+  "shares": {
+    "records": [
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "admin$"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "Archive"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "Ari"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "c$"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "CIFSTEST"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "Download"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "Hello"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "ipc$"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "RESTORE"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "Seclogs"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "TESTCIFSLOW_ARCHIVE_T2_Vol"
+      },
+      {
+        "svm": {
+          "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+          "name": "TESTCIFSLOW"
+        },
+        "name": "XCP"
+      }
+    ],
+    "num_records": 12
+  },
+  "users_and_groups": {
+    "records": [
+      {
+        "user_or_group": "RTI\\Domain Users",
+        "type": "windows"
+      },
+      {
+        "user_or_group": "RTI\\ITS-Server-Admins",
+        "type": "windows"
+      }
+    ],
+    "num_records": 2
+  },
+  "file_security": {
+    "svm": {
+      "uuid": "d0d5f340-1c54-11e6-a188-a0369f33bdb4",
+      "name": "TESTCIFSLOW"
+    },
+    "path": "/CIFSTEST",
+    "owner": "BUILTIN\\Administrators",
+    "group": "BUILTIN\\Administrators",
+    "control_flags": "0x9504",
+    "acls": [
+      {
+        "user": "NT AUTHORITY\\SYSTEM",
+        "access": "access_allow",
+        "apply_to": {
+          "files": true,
+          "sub_folders": true,
+          "this_folder": true
+        },
+        "advanced_rights": {
+          "append_data": true,
+          "delete": true,
+          "delete_child": true,
+          "execute_file": true,
+          "full_control": true,
+          "read_attr": true,
+          "read_data": true,
+          "read_ea": true,
+          "read_perm": true,
+          "write_attr": true,
+          "write_data": true,
+          "write_ea": true,
+          "write_owner": true,
+          "synchronize": true,
+          "write_perm": true
+        },
+        "access_control": "file_directory"
+      },
+      {
+        "user": "RTI\\ITS-Server-Admins",
+        "access": "access_allow",
+        "apply_to": {
+          "files": true,
+          "sub_folders": true,
+          "this_folder": true
+        },
+        "advanced_rights": {
+          "append_data": true,
+          "delete": true,
+          "delete_child": true,
+          "execute_file": true,
+          "full_control": true,
+          "read_attr": true,
+          "read_data": true,
+          "read_ea": true,
+          "read_perm": true,
+          "write_attr": true,
+          "write_data": true,
+          "write_ea": true,
+          "write_owner": true,
+          "synchronize": true,
+          "write_perm": true
+        },
+        "access_control": "file_directory"
+      },
+      {
+        "user": "RTI\\Linux-server-administrators",
+        "access": "access_allow",
+        "apply_to": {
+          "files": true,
+          "sub_folders": true,
+          "this_folder": true
+        },
+        "advanced_rights": {
+          "append_data": true,
+          "delete": true,
+          "delete_child": true,
+          "execute_file": true,
+          "full_control": true,
+          "read_attr": true,
+          "read_data": true,
+          "read_ea": true,
+          "read_perm": true,
+          "write_attr": true,
+          "write_data": true,
+          "write_ea": true,
+          "write_owner": true,
+          "synchronize": true,
+          "write_perm": true
+        },
+        "access_control": "file_directory"
+      },
+      {
+        "user": "RTI\\ayfox",
+        "access": "access_allow",
+        "apply_to": {
+          "files": true,
+          "sub_folders": true,
+          "this_folder": true
+        },
+        "advanced_rights": {
+          "append_data": true,
+          "delete": true,
+          "execute_file": true,
+          "read_attr": true,
+          "read_data": true,
+          "read_ea": true,
+          "read_perm": true,
+          "write_attr": true,
+          "write_data": true,
+          "write_ea": true,
+          "synchronize": true
+        },
+        "access_control": "file_directory"
+      },
+      {
+        "user": "RTI\\ayfoxprv",
+        "access": "access_allow",
+        "apply_to": {
+          "files": true,
+          "sub_folders": true,
+          "this_folder": true
+        },
+        "advanced_rights": {
+          "append_data": true,
+          "delete": true,
+          "execute_file": true,
+          "read_attr": true,
+          "read_data": true,
+          "read_ea": true,
+          "read_perm": true,
+          "write_attr": true,
+          "write_data": true,
+          "write_ea": true,
+          "synchronize": true
+        },
+        "access_control": "file_directory"
+      },
+      {
+        "user": "RTI\\Domain Users",
+        "access": "access_allow",
+        "apply_to": {
+          "files": true,
+          "sub_folders": true,
+          "this_folder": true
+        },
+        "advanced_rights": {
+          "read_data": true,
+          "synchronize": true
+        },
+        "access_control": "file_directory"
+      },
+      {
+        "user": "RTI\\svcITSLinuxSpotter",
+        "access": "access_allow",
+        "apply_to": {
+          "files": true,
+          "sub_folders": true,
+          "this_folder": true
+        },
+        "advanced_rights": {
+          "append_data": true,
+          "delete": true,
+          "delete_child": true,
+          "execute_file": true,
+          "full_control": true,
+          "read_attr": true,
+          "read_data": true,
+          "read_ea": true,
+          "read_perm": true,
+          "write_attr": true,
+          "write_data": true,
+          "write_ea": true,
+          "write_owner": true,
+          "synchronize": true,
+          "write_perm": true
+        },
+        "access_control": "file_directory"
+      }
+    ],
+    "inode": 64,
+    "security_style": "ntfs",
+    "effective_style": "ntfs",
+    "dos_attributes": "10",
+    "text_dos_attr": "----D---",
+    "user_id": "0",
+    "group_id": "0",
+    "mode_bits": 777,
+    "text_mode_bits": "rwxrwxrwx"
+  }
+}
