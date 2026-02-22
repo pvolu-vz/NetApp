@@ -9,4 +9,4 @@ python-dotenv>=1.0.0
 
 # Veza OAA (Open Authorization API) Client
 # Required for Custom Application integration with Veza
-oaaclient>=2.0.0
+oaaclient>=1.1.15
