@@ -139,35 +139,46 @@ validate_dependencies() {
         return 1
     fi
     print_success "requirements.txt found"
+
+    # Prefer the venv installed by install_ontap.sh; fall back to system python3
+    VENV_PYTHON="${SCRIPT_DIR}/venv/bin/python"
+    if [[ -x "$VENV_PYTHON" ]]; then
+        PYTHON_CMD="$VENV_PYTHON"
+        print_info "Using venv Python: $VENV_PYTHON"
+    else
+        PYTHON_CMD="python3"
+        print_warning "Venv not found at ${SCRIPT_DIR}/venv — using system python3 (packages may be missing)"
+    fi
     
     # Check if dependencies are installed
     echo -e "\n${BOLD}Checking installed packages:${NC}"
     
     # Check requests
-    if python3 -c "import requests" 2>/dev/null; then
-        REQUESTS_VER=$(python3 -c "import requests; print(requests.__version__)" 2>/dev/null)
+    if "$PYTHON_CMD" -c "import requests" 2>/dev/null; then
+        REQUESTS_VER=$("$PYTHON_CMD" -c "import requests; print(requests.__version__)" 2>/dev/null)
         print_success "requests==$REQUESTS_VER installed"
     else
         print_fail "requests not installed"
     fi
     
     # Check python-dotenv
-    if python3 -c "import dotenv" 2>/dev/null; then
-        DOTENV_VER=$(python3 -c "import dotenv; print(dotenv.__version__)" 2>/dev/null)
+    if "$PYTHON_CMD" -c "import dotenv" 2>/dev/null; then
+        DOTENV_VER=$("$PYTHON_CMD" -c "import dotenv; print(dotenv.__version__)" 2>/dev/null)
         print_success "python-dotenv==$DOTENV_VER installed"
     else
         print_fail "python-dotenv not installed"
     fi
     
     # Check oaaclient
-    if python3 -c "import oaaclient" 2>/dev/null; then
-        print_success "oaaclient installed"
+    if "$PYTHON_CMD" -c "import oaaclient" 2>/dev/null; then
+        OAACLIENT_VER=$("$PYTHON_CMD" -c "import importlib.metadata; print(importlib.metadata.version('oaaclient'))" 2>/dev/null)
+        print_success "oaaclient==${OAACLIENT_VER:-installed}"
     else
         print_fail "oaaclient not installed"
     fi
     
     if [[ $TESTS_FAILED -gt 0 ]]; then
-        echo -e "\n${YELLOW}Install dependencies with: pip3 install -r $REQUIREMENTS_FILE${NC}"
+        echo -e "\n${YELLOW}Install dependencies with: ${SCRIPT_DIR}/venv/bin/pip install -r $REQUIREMENTS_FILE${NC}"
     fi
 }
 
