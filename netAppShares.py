@@ -560,7 +560,17 @@ def discover_folders_recursive(base_url, volume_uuid, parent_path, current_level
         folder_name = folder.get('name', '')
         if not folder_name:
             continue
-        
+
+        # Skip ONTAP pseudo-directory entries returned by the files API
+        if folder_name in ('.', '..'):
+            continue
+
+        # Strip ./ prefix that ONTAP may prepend to folder names (e.g. "./FolderName")
+        if folder_name.startswith('./'):
+            folder_name = folder_name[2:]
+        if not folder_name:
+            continue
+
         # Build full path for this folder
         folder_full_path = f"{parent_path}/{folder_name}" if parent_path != "/" else f"/{folder_name}"
         
