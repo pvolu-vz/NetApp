@@ -405,13 +405,13 @@ def get_nfs_exports(base_url, svm_name):
     return []
 
 
-def get_share_permissions(base_url, svm_name, share_name):
+def get_share_permissions(base_url, svm_uuid, share_name):
     """
     Retrieve NTFS permissions for a specific CIFS share
     
     Args:
         base_url: ONTAP API base URL
-        svm_name: SVM name
+        svm_uuid: SVM UUID
         share_name: Share name
     
     Returns:
@@ -422,8 +422,8 @@ def get_share_permissions(base_url, svm_name, share_name):
         "Authorization": create_basic_auth_header()
     }
     
-    # Build URL with SVM name and share name in path
-    url = f"{base_url}/api/protocols/file-security/permissions/{svm_name}/{share_name}"
+    # Build URL with SVM UUID and share name in path
+    url = f"{base_url}/api/protocols/file-security/permissions/{svm_uuid}/{share_name}"
     
     try:
         response = requests.get(url, headers=headers, verify=False)
@@ -1623,7 +1623,7 @@ def main():
                     if share_name:
                         perms = get_share_permissions(
                             ONTAP_API_BASE_URL,
-                            args.svm_name,
+                            svm_uuid,
                             share_name
                         )
                         if perms:
