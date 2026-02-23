@@ -5,12 +5,16 @@ Authenticates and retrieves volumes from NetApp BlueXP
 """
 
 import requests
+import urllib3
 import json
 import sys
 import os
 import logging
 import argparse
 import base64
+
+# Suppress SSL certificate warnings for ONTAP connections with self-signed certs
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from dotenv import load_dotenv
 from oaaclient.client import OAAClient, OAAClientError
 from oaaclient.templates import CustomApplication, OAAPermission, OAAPropertyType, IdPProviderType
@@ -358,7 +362,7 @@ def get_cifs_shares(base_url, svm_name):
     params = {"svm.name": svm_name}
     
     try:
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url, headers=headers, params=params, verify=False)
         response.raise_for_status()
         
         data = response.json()
@@ -422,7 +426,7 @@ def get_share_permissions(base_url, svm_name, share_name):
     url = f"{base_url}/api/protocols/file-security/permissions/{svm_name}/{share_name}"
     
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, verify=False)
         response.raise_for_status()
         
         data = response.json()
@@ -458,7 +462,7 @@ def get_storage_volumes(base_url, svm_name):
     params = {"svm.name": svm_name}
     
     try:
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url, headers=headers, params=params, verify=False)
         response.raise_for_status()
         
         data = response.json()
@@ -508,7 +512,7 @@ def get_volume_folders(base_url, volume_uuid, path="/"):
     params = {"type": "directory"}
     
     try:
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url, headers=headers, params=params, verify=False)
         response.raise_for_status()
         
         data = response.json()
@@ -1398,7 +1402,7 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
                         perms_url = f"{base_url}/api/protocols/file-security/permissions/{svm_uuid}/{folder_perms_path}"
                         
                         try:
-                            response = requests.get(perms_url, headers=headers)
+                            response = requests.get(perms_url, headers=headers, verify=False)
                             response.raise_for_status()
                             
                             folder_perms_data = response.json().get('file_security', {})
