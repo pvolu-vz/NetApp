@@ -461,8 +461,10 @@ def get_storage_volumes(base_url, svm_name):
     }
     
     # Build URL with SVM name parameter
+    # Request nas.path (junction path) in addition to name/uuid so we can map each share
+    # to the volume that actually hosts its data, enabling correct sub-directory traversal.
     url = f"{base_url}/api/storage/volumes"
-    params = {"svm.name": svm_name}
+    params = {"svm.name": svm_name, "fields": "name,uuid,nas.path"}
     
     try:
         response = requests.get(url, headers=headers, params=params, verify=False)
@@ -488,14 +490,18 @@ def get_storage_volumes(base_url, svm_name):
         return []
 
 
-def get_volume_folders(base_url, volume_uuid, path="/"):
+def get_volume_folders(base_url, volume_uuid, path="/", volume_base_path="/"):
     """
     Retrieve immediate child folders within a volume path
     
     Args:
         base_url: ONTAP API base URL
         volume_uuid: Volume UUID
-        path: Path within the volume (default: "/")
+        path: SVM-namespace path to list (e.g. "/CIFSTEST/Test1")
+        volume_base_path: The SVM-namespace path that maps to the volume root
+            (i.e. the junction path of the volume, e.g. "/CIFSTEST").
+            This prefix is stripped from 'path' to produce a volume-relative
+            path before building the API URL, preventing cross-junction failures.
     
     Returns:
         list: List of folder dictionaries with name and path, or empty list on failure
@@ -505,13 +511,30 @@ def get_volume_folders(base_url, volume_uuid, path="/"):
         "Authorization": create_basic_auth_header()
     }
     
-    # Build URL for files endpoint with directory filter
-    # Remove leading slash from path for URL construction
-    clean_path = path.lstrip('/')
-    if not clean_path:
-        clean_path = "/"
+    # Convert the SVM-namespace path to a volume-root-relative path by stripping
+    # the volume's junction prefix (volume_base_path).
+    # Example: path="/CIFSTEST/Test1", volume_base_path="/CIFSTEST" → "/Test1"
+    base = volume_base_path.rstrip('/')
+    if base and path.startswith(base):
+        volume_relative = path[len(base):] or '/'
+    else:
+        volume_relative = path
     
-    url = f"{base_url}/api/storage/volumes/{volume_uuid}/files/{clean_path}"
+    # Build URL-safe path: strip the leading slash, then percent-encode each
+    # path component individually so spaces and special characters are safe.
+    clean_path = volume_relative.lstrip('/')
+    if clean_path:
+        segments = clean_path.split('/')
+        clean_path = '/'.join(urllib.parse.quote(seg, safe='') for seg in segments)
+    else:
+        clean_path = ""
+    
+    # When clean_path is empty we're listing the volume root; ONTAP expects no
+    # trailing path component (i.e. the URL ends with /files, not /files/).
+    if clean_path:
+        url = f"{base_url}/api/storage/volumes/{volume_uuid}/files/{clean_path}"
+    else:
+        url = f"{base_url}/api/storage/volumes/{volume_uuid}/files"
     params = {"type": "directory"}
     
     try:
@@ -529,18 +552,22 @@ def get_volume_folders(base_url, volume_uuid, path="/"):
         return []
 
 
-def discover_folders_recursive(base_url, volume_uuid, parent_path, current_level, max_depth, svm_uuid, share_name):
+def discover_folders_recursive(base_url, volume_uuid, parent_path, current_level, max_depth, svm_uuid, share_name, volume_base_path="/"):
     """
     Recursively discover folders up to a specified depth
     
     Args:
         base_url: ONTAP API base URL
         volume_uuid: Volume UUID
-        parent_path: Current path to discover folders within (e.g., "/share" or "/share/folder1")
+        parent_path: Current SVM-namespace path to discover folders within
+            (e.g., "/CIFSTEST" or "/CIFSTEST/Test1")
         current_level: Current depth level (0 = directly under share)
         max_depth: Maximum depth to traverse
         svm_uuid: SVM UUID for unique ID generation
         share_name: Share name for unique ID generation
+        volume_base_path: The SVM-namespace junction path that maps to this
+            volume's root (e.g. "/CIFSTEST").  Passed through to
+            get_volume_folders so it can compute volume-relative paths.
     
     Returns:
         list: List of tuples (folder_full_path, folder_metadata, folder_level)
@@ -551,8 +578,8 @@ def discover_folders_recursive(base_url, volume_uuid, parent_path, current_level
     
     discovered_folders = []
     
-    # Get folders at current path
-    folders = get_volume_folders(base_url, volume_uuid, parent_path)
+    # Get folders at current path, using volume-relative addressing
+    folders = get_volume_folders(base_url, volume_uuid, parent_path, volume_base_path)
     
     # If no folders found, gracefully return (folder may be leaf or inaccessible)
     if not folders:
@@ -594,7 +621,8 @@ def discover_folders_recursive(base_url, volume_uuid, parent_path, current_level
                     current_level=current_level + 1,
                     max_depth=max_depth,
                     svm_uuid=svm_uuid,
-                    share_name=share_name
+                    share_name=share_name,
+                    volume_base_path=volume_base_path
                 )
                 discovered_folders.extend(subfolders)
             except Exception as e:
@@ -1198,6 +1226,16 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
     # Build volume name to UUID mapping
     volume_name_to_uuid = {vol.get('name'): vol.get('uuid') for vol in volumes_data if vol.get('name') and vol.get('uuid')}
     
+    # Build volume junction-path to UUID mapping so each share can be matched to
+    # the volume that actually hosts its data.  This lets us use volume-root-relative
+    # paths in the files API, avoiding cross-junction traversal failures.
+    volume_junction_to_uuid = {}
+    for vol in volumes_data:
+        junction = vol.get('nas', {}).get('path', '')
+        vol_uuid = vol.get('uuid')
+        if junction and vol_uuid:
+            volume_junction_to_uuid[junction] = vol_uuid
+    
     # Initialize cache for Veza API group DN lookups
     group_dn_cache = {}
     
@@ -1339,29 +1377,66 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
             if share_name.endswith('$') or share_fs_path == '/':
                 print(f"  \u24d8 Skipping folder discovery for share '{share_name}' (admin/root share)")
             else:
-                # Try each volume to find which one contains this share
-                for volume_uuid in volume_name_to_uuid.values():
-                    # Use the real filesystem path from the CIFS API (share['path']) so
-                    # discovery works even when the share name differs from the mount path.
+                # Determine which volume backs this share and what the volume-relative
+                # base path is.  We match by finding the volume whose junction path is
+                # the longest prefix of the share's SVM-namespace path.  Using the
+                # correct backing volume (rather than the SVM root volume) avoids the
+                # ONTAP files API limitation where cross-junction traversal silently
+                # returns empty results beyond the first level.
+                best_junction = None
+                best_junction_uuid = None
+                for junction, juuid in volume_junction_to_uuid.items():
+                    # Normalise: junction must be a proper prefix of share_fs_path
+                    # (or equal to it for shares at the volume root).
+                    norm_junction = junction.rstrip('/')
+                    if share_fs_path == norm_junction or share_fs_path.startswith(norm_junction + '/'):
+                        if best_junction is None or len(norm_junction) > len(best_junction.rstrip('/')):
+                            best_junction = junction
+                            best_junction_uuid = juuid
+
+                if best_junction and best_junction_uuid:
+                    # Happy path: we know exactly which volume to use and what path
+                    # prefix to strip so all API calls use volume-root-relative paths.
+                    volume_base = best_junction.rstrip('/') or '/'
                     discovered = discover_folders_recursive(
                         base_url=base_url,
-                        volume_uuid=volume_uuid,
+                        volume_uuid=best_junction_uuid,
                         parent_path=share_fs_path,
                         current_level=0,
                         max_depth=folder_depth,
                         svm_uuid=svm_uuid,
-                        share_name=share_name
+                        share_name=share_name,
+                        volume_base_path=volume_base
                     )
-
                     if discovered:
                         all_discovered_folders = discovered
-                        volume_uuid_found = volume_uuid
-                        # Find volume name for logging
+                        volume_uuid_found = best_junction_uuid
                         for vol_name, vol_uuid in volume_name_to_uuid.items():
-                            if vol_uuid == volume_uuid:
+                            if vol_uuid == best_junction_uuid:
                                 volume_found = vol_name
                                 break
-                        break
+                else:
+                    # Fallback: no junction match found, try each volume with the share
+                    # path as-is (original behaviour).
+                    for volume_uuid in volume_name_to_uuid.values():
+                        discovered = discover_folders_recursive(
+                            base_url=base_url,
+                            volume_uuid=volume_uuid,
+                            parent_path=share_fs_path,
+                            current_level=0,
+                            max_depth=folder_depth,
+                            svm_uuid=svm_uuid,
+                            share_name=share_name,
+                            volume_base_path=share_fs_path
+                        )
+                        if discovered:
+                            all_discovered_folders = discovered
+                            volume_uuid_found = volume_uuid
+                            for vol_name, vol_uuid in volume_name_to_uuid.items():
+                                if vol_uuid == volume_uuid:
+                                    volume_found = vol_name
+                                    break
+                            break
             
             if all_discovered_folders:
                 depth_info = f"max depth: {folder_depth}" if folder_depth > 1 else "1 level deep"
