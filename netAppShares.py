@@ -1373,6 +1373,10 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
             all_discovered_folders = []
             volume_found = None
             volume_uuid_found = None
+            # volume_base tracks the junction prefix that was used to root the
+            # folder discovery.  Initialise to share_fs_path so it is always
+            # defined even when the early-exit path is taken (admin/root shares).
+            volume_base = share_fs_path
 
             if share_name.endswith('$') or share_fs_path == '/':
                 print(f"  \u24d8 Skipping folder discovery for share '{share_name}' (admin/root share)")
@@ -1432,6 +1436,7 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
                         if discovered:
                             all_discovered_folders = discovered
                             volume_uuid_found = volume_uuid
+                            volume_base = share_fs_path
                             for vol_name, vol_uuid in volume_name_to_uuid.items():
                                 if vol_uuid == volume_uuid:
                                     volume_found = vol_name
@@ -1452,9 +1457,17 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
                         continue
                     
                     try:
-                        # Extract relative path from full path (remove leading /share_name/)
-                        relative_path = folder_full_path.replace(f"/{share_name}/", "", 1)
-                        
+                        # Extract relative path from full path by stripping the volume
+                        # junction prefix (volume_base).  This is correct even when the
+                        # share name differs from the junction path (e.g. share "Archive"
+                        # → junction "/ARCHIVE_T2_Vol"), which previously caused the full
+                        # path like "/ARCHIVE_T2_Vol/Hello" to appear as the folder name.
+                        vbase = volume_base.rstrip('/')
+                        if folder_full_path.startswith(vbase + '/'):
+                            relative_path = folder_full_path[len(vbase) + 1:]
+                        else:
+                            relative_path = folder_full_path.lstrip('/')
+
                         # For nested folders, use relative path as display name for clarity
                         # Level 0: "folder1", Level 1+: "folder1/subfolder"
                         display_name = relative_path
