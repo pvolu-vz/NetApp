@@ -1202,6 +1202,8 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
     permissions_assigned = 0
     folders_discovered = 0
     folders_with_permissions = 0
+    total_groups_queried = 0
+    successful_lookups = 0
     
     # Track created folder resources by their full path for parent-child relationships
     folder_resources_by_path = {}
