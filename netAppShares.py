@@ -6,6 +6,7 @@ Authenticates and retrieves volumes from NetApp BlueXP
 
 import requests
 import urllib3
+import urllib.parse
 import json
 import sys
 import os
@@ -359,7 +360,7 @@ def get_cifs_shares(base_url, svm_name):
     
     # Build URL with SVM name parameter
     url = f"{base_url}/api/protocols/cifs/shares"
-    params = {"svm.name": svm_name}
+    params = {"svm.name": svm_name, "fields": "name,path,svm"}
     
     try:
         response = requests.get(url, headers=headers, params=params, verify=False)
@@ -405,14 +406,14 @@ def get_nfs_exports(base_url, svm_name):
     return []
 
 
-def get_share_permissions(base_url, svm_uuid, share_name):
+def get_share_permissions(base_url, svm_uuid, share_path):
     """
     Retrieve NTFS permissions for a specific CIFS share
     
     Args:
         base_url: ONTAP API base URL
         svm_uuid: SVM UUID
-        share_name: Share name
+        share_path: Filesystem path of the share (e.g. '/Archive'), percent-encoded in the URL
     
     Returns:
         dict: File security data including ACLs, or None on failure
@@ -422,18 +423,20 @@ def get_share_permissions(base_url, svm_uuid, share_name):
         "Authorization": create_basic_auth_header()
     }
     
-    # Build URL with SVM UUID and share name in path
-    url = f"{base_url}/api/protocols/file-security/permissions/{svm_uuid}/{share_name}"
+    # The path segment must be percent-encoded so the leading '/' is not parsed
+    # as a URL separator (e.g. '/Archive' -> '%2FArchive')
+    encoded_path = urllib.parse.quote(share_path, safe='')
+    url = f"{base_url}/api/protocols/file-security/permissions/{svm_uuid}/{encoded_path}"
     
     try:
         response = requests.get(url, headers=headers, verify=False)
         response.raise_for_status()
         
         data = response.json()
-        return data.get('file_security', {})
+        return data
         
     except requests.exceptions.RequestException as e:
-        print(f"⚠ Error fetching permissions for share '{share_name}': {e}")
+        print(f"⚠ Error fetching permissions for path '{share_path}': {e}")
         if hasattr(e, 'response') and hasattr(e.response, 'text'):
             print(f"Response: {e.response.text}")
         return None
@@ -1324,11 +1327,14 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
             volume_uuid_found = None
             
             for volume_uuid in volume_name_to_uuid.values():
-                # Try to discover folders recursively from this volume
+                # Try to discover folders recursively from this volume.
+                # Use the real filesystem path from the CIFS API (share['path']) so
+                # discovery works even when the share name differs from the mount path.
+                share_fs_path = share.get('path', f"/{share_name}")
                 discovered = discover_folders_recursive(
                     base_url=base_url,
                     volume_uuid=volume_uuid,
-                    parent_path=f"/{share_name}",
+                    parent_path=share_fs_path,
                     current_level=0,
                     max_depth=folder_depth,
                     svm_uuid=svm_uuid,
@@ -1400,22 +1406,24 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
                         # Store this folder resource for potential child folders
                         folder_resources_by_path[folder_full_path] = folder_resource
                         
-                        # Get permissions for this folder
-                        # Construct path for permissions API: share_name/relative_path (supports nested folders)
-                        folder_perms_path = f"{share_name}/{relative_path}"
+                        # Get permissions for this folder.
+                        # folder_full_path is already the correct absolute filesystem path
+                        # (e.g. '/Archive/subfolder/deep') at every nesting level.
+                        # Percent-encode it so '/' chars are not treated as URL separators.
+                        encoded_folder_path = urllib.parse.quote(folder_full_path, safe='')
                         
                         headers = {
                             "Content-Type": "application/json",
                             "Authorization": create_basic_auth_header()
                         }
                         
-                        perms_url = f"{base_url}/api/protocols/file-security/permissions/{svm_uuid}/{folder_perms_path}"
+                        perms_url = f"{base_url}/api/protocols/file-security/permissions/{svm_uuid}/{encoded_folder_path}"
                         
                         try:
                             response = requests.get(perms_url, headers=headers, verify=False)
                             response.raise_for_status()
                             
-                            folder_perms_data = response.json().get('file_security', {})
+                            folder_perms_data = response.json()
                             
                             # Set folder security properties
                             if folder_perms_data.get('security_style'):
@@ -1630,15 +1638,18 @@ def main():
                 
                 for share in shares:
                     share_name = share.get('name')
-                    if share_name:
+                    share_path = share.get('path')
+                    if share_name and share_path:
                         perms = get_share_permissions(
                             ONTAP_API_BASE_URL,
                             svm_uuid,
-                            share_name
+                            share_path
                         )
                         if perms:
                             permissions_data[share_name] = perms
                             print(f"  ✓ {share_name}: {len(perms.get('acls', []))} ACL(s)")
+                    elif share_name and not share_path:
+                        print(f"  ⚠ Skipping '{share_name}': no filesystem path returned by API")
                 
                 print(f"\n✓ Retrieved permissions for {len(permissions_data)} share(s)\n")
                 
