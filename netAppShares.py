@@ -568,6 +568,10 @@ def discover_folders_recursive(base_url, volume_uuid, parent_path, current_level
         if folder_name in ('.', '..'):
             continue
 
+        # Skip ONTAP snapshot directories (and all their timestamped children)
+        if folder_name == '.snapshot':
+            continue
+
         # Strip ./ prefix that ONTAP may prepend to folder names (e.g. "./FolderName")
         if folder_name.startswith('./'):
             folder_name = folder_name[2:]
@@ -1323,35 +1327,41 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
                             permissions_assigned += 1
             
             # Step 2: Discover folders within this share (up to specified depth)
-            # Try each volume to find which one contains this share
+            # Skip admin/system shares (e.g. admin$, c$, ipc$) and shares mapped to the
+            # volume root ('/').  These shares either have no meaningful ACL hierarchy to
+            # enumerate or would produce paths that are missing the volume junction prefix,
+            # causing every folder-level permissions request to fail.
+            share_fs_path = share.get('path', f"/{share_name}")
             all_discovered_folders = []
             volume_found = None
             volume_uuid_found = None
-            
-            for volume_uuid in volume_name_to_uuid.values():
-                # Try to discover folders recursively from this volume.
-                # Use the real filesystem path from the CIFS API (share['path']) so
-                # discovery works even when the share name differs from the mount path.
-                share_fs_path = share.get('path', f"/{share_name}")
-                discovered = discover_folders_recursive(
-                    base_url=base_url,
-                    volume_uuid=volume_uuid,
-                    parent_path=share_fs_path,
-                    current_level=0,
-                    max_depth=folder_depth,
-                    svm_uuid=svm_uuid,
-                    share_name=share_name
-                )
-                
-                if discovered:
-                    all_discovered_folders = discovered
-                    volume_uuid_found = volume_uuid
-                    # Find volume name for logging
-                    for vol_name, vol_uuid in volume_name_to_uuid.items():
-                        if vol_uuid == volume_uuid:
-                            volume_found = vol_name
-                            break
-                    break
+
+            if share_name.endswith('$') or share_fs_path == '/':
+                print(f"  \u24d8 Skipping folder discovery for share '{share_name}' (admin/root share)")
+            else:
+                # Try each volume to find which one contains this share
+                for volume_uuid in volume_name_to_uuid.values():
+                    # Use the real filesystem path from the CIFS API (share['path']) so
+                    # discovery works even when the share name differs from the mount path.
+                    discovered = discover_folders_recursive(
+                        base_url=base_url,
+                        volume_uuid=volume_uuid,
+                        parent_path=share_fs_path,
+                        current_level=0,
+                        max_depth=folder_depth,
+                        svm_uuid=svm_uuid,
+                        share_name=share_name
+                    )
+
+                    if discovered:
+                        all_discovered_folders = discovered
+                        volume_uuid_found = volume_uuid
+                        # Find volume name for logging
+                        for vol_name, vol_uuid in volume_name_to_uuid.items():
+                            if vol_uuid == volume_uuid:
+                                volume_found = vol_name
+                                break
+                        break
             
             if all_discovered_folders:
                 depth_info = f"max depth: {folder_depth}" if folder_depth > 1 else "1 level deep"
