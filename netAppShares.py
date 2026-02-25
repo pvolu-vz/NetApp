@@ -1468,9 +1468,9 @@ def create_ontap_application(provider_name, svm_name, svm_uuid, shares_data, per
                         else:
                             relative_path = folder_full_path.lstrip('/')
 
-                        # For nested folders, use relative path as display name for clarity
-                        # Level 0: "folder1", Level 1+: "folder1/subfolder"
-                        display_name = relative_path
+                        # Use the leaf folder name as display name (e.g. "Ayetier" not "Chris/Ayetier")
+                        # unique_id still uses relative_path to avoid collisions across parents
+                        display_name = folder_name
                         
                         # Determine parent resource based on folder level
                         if folder_level == 0:
